@@ -1,0 +1,61 @@
+ //@version=5
+strategy("[BULL TREND][CONFIRMED]Refined 15-Min 11-50 SMA & RSI Bot", overlay=true, 
+ pyramiding = 1, calc_on_order_fills = false, default_qty_type = strategy.percent_of_equity, 
+ default_qty_value = 100, initial_capital = 10000)
+
+//import bonds800/TBotWebhook/3 as tv
+// TBOT: parameters to makeWebhookJson()
+///webhookKey = "WebhookReceived:996cc4"
+//clientId=1 // default 1
+
+// === INPUT BACKTEST RANGE ===
+i_enabled = input.bool(true, "Enable Date Filter")
+i_from = input.time(defval = timestamp("01 Aug 2024 00:00 +0000"), title = "From")
+i_thru = input.time(defval = timestamp("05 Nov 2024 00:00 +0000"), title = "Thru")
+date() =>  (i_enabled == false)  or (i_enabled == true and time >= i_from and time <= i_thru)  // create date function "within window of time" 
+
+BarsSinceFirstEntry(int entryBarIndex) =>
+    bar_index - strategy.opentrades.entry_bar_index(entryBarIndex)
+
+// Calculate SMAs and RSI
+sma_short = ta.sma(close, 11)
+sma_long = ta.sma(close, 50)
+rsi = ta.rsi(close, 14)
+
+// Plot SMAs
+plot(sma_short, color=color.blue, title="11 SMA")
+plot(sma_long, color=color.red, title="50 SMA")
+
+// Entry Conditions (all must be true)
+// - Price 2 candles ago > 11 SMA 2 candles ago
+// - Price 2 candles ago > 50 SMA 2 candles ago
+// - RSI 2 candles ago > 3 candles ago
+price_above_smas = close[2] > sma_short[2] and close[2] > sma_long[2]
+rsi_increased = rsi[2] > rsi[3]
+long_condition = price_above_smas and rsi_increased
+
+// Execute a buy order when date filter and entry conditions are true
+if (date() and long_condition)
+    longRef = "Long_" + str.tostring(bar_index)
+    strategy.entry("Buy", strategy.long)
+    //msg = tv.makeWebhookJson(webhookKey=webhookKey, direction = 'strategy.entrylong', ticker = syminfo.ticker,qty=strategy.position_size, entryLimit = close + (close * 0.01), orderRef=longRef, clientId=clientId)
+    //alert(msg,alert.freq_once_per_bar)
+
+
+// Exit logic: apply take profit or stop loss
+exit_condition_win = (BarsSinceFirstEntry(0) > 1 and strategy.opentrades.profit_percent(0) > 0.5)
+exit_condition_lose =  (BarsSinceFirstEntry(0) > 2 and strategy.opentrades.profit_percent(0) < -2 )
+
+if (exit_condition_win)
+    strategy.close( "Buy","Take Profit")
+    label.new(bar_index,close+1,"Take Profit\nBars:"+str.tostring(BarsSinceFirstEntry(0))+"\nProfit"+str.tostring(strategy.opentrades.profit_percent(0)),color = color.new( #cd0202,70),style= label.style_label_left,size=size.small,textcolor = color.white)
+
+if (exit_condition_lose)
+    strategy.close( "Buy","Take Stop Loss")
+
+
+
+// Plot buy and sell signals on the chart
+//plotshape(series=long_condition, title="Buy Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="BUY")
+//plotshape(series=exit_condition_win, title="Exit Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="EXITW")
+//plotshape(series=exit_condition_lose, title="Exit Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="EXITL")
